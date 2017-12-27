@@ -46,6 +46,19 @@
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value="com.google.watermap.p.gary.fogliftver6.MainActivity" />
         </activity>
+        <activity
+            android:name=".WorldMapsActivity"
+            android:label="@string/title_activity_world_maps"
+            android:theme="@style/AppTheme">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.google.watermap.p.gary.fogliftver6.MainActivity" />
+        </activity>
+        <service
+            android:name=".CurrentLocationService"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>

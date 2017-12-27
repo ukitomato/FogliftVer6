@@ -5,16 +5,16 @@
 
     <group android:checkableBehavior="single">
         <item
-            android:id="@+id/nav_camera"
+            android:id="@+id/foglift_map"
             android:icon="@drawable/ic_dark"
             android:title="Fogliftマップ" />
         <item
-            android:id="@+id/nav_gallery"
+            android:id="@+id/world_map"
             android:icon="@drawable/ic_map_black_24dp"
             android:title="ワールドマップ" />
 
         <item
-            android:id="@+id/nav_manage"
+            android:id="@+id/nav_preference"
             android:icon="@drawable/ic_settings_black_24dp"
             android:title="設定" />
     </group>
