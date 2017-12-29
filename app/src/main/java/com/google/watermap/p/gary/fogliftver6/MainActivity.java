@@ -1,6 +1,5 @@
 package com.google.watermap.p.gary.fogliftver6;
 
-import android.*;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
@@ -9,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Point;
 import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
@@ -68,40 +68,32 @@ public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback, GoogleMap.OnMarkerDragListener, GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener, GoogleMap.OnPoiClickListener, PlaceSelectionListener {
 
+    Intent intent;
 
-    private GoogleMap mMap;
-
-    //Share
-    private static final String TAG = MainActivity.class.getSimpleName();
-    private final static String KEY_LOCATION = "location";
-    private LatLng mCurrentLocation;
-    private FusedLocationProviderClient mFusedLocationClient;
-
-
-    private float mCameraDefaultZoom = 15;
-
-    //Current Position
+    //CODE
     private static final int REQUEST_PERMISSIONS_REQUEST_CODE = 34;
 
-    // UI
+    //KEY
+    private static final String TAG = MainActivity.class.getSimpleName();
     private final static String KEY_CAMERA_LOCATION = "camera_location";
     private final static String KEY_CAMERA_ZOOM = "camera_zoom";
+    private final static String KEY_LOCATION = "location";
 
-    private LatLng mCameraLocation;
-    private float mCameraZoom;
+    private final static String KEY_LATITUDE = "Latitude";
+    private final static String KEY_LONGITUDE = "Longitude";
 
-    // Label
+    private static final String KEY_GENERAL = "一般";
+    private static final String KEY_DIARRHEA = "下痢";
+    private static final String KEY_RABIES = "狂犬病";
 
-
-    private final LatLng mDefaultLocation = new LatLng(35.652832, 139.839478);
-    private final LatLng tsukuba = new LatLng(36.082736, 140.111592);
-
-    //Preference
-    private SharedPreferences preferences;
-    private SharedPreferences sharedPreferences;
-    private SharedPreferences.OnSharedPreferenceChangeListener onSharedPreferenceChangeListener;
-    private Boolean serviceAvailble;
-    private MenuItem serviceSwitch;
+    private static final String KEY_PLACE_FROM_DATABASE = "Places";
+    private static final String KEY_ROAD_FROM_DATABASE = "Roads";
+    private static final String KEY_KIND_FROM_DATABASE = "Kind";
+    private static final String KEY_LEVEL_FROM_DATABASE = "Level";
+    private static final String KEY_LOCATION_FROM_DATABASE = "Location";
+    private static final String KEY_IMAGEURI_FROM_DATABASE = "ImageURI";
+    private static final String KEY_ID_FROM_DATABASE = "ID";
+    private static final String KEY_INFORMATION_FROM_DATABASE = "Information";
 
     //Firebase
     private FragmentActivity fragmentActivity = this;
@@ -111,20 +103,77 @@ public class MainActivity extends AppCompatActivity
     private boolean onDataChange = false;
     private LongSparseArray<Marker> markerHashArray = new LongSparseArray<>();
 
-    Intent intent;
-    private double earth_dis = 6378137;
-    private GoogleApiClient mGoogleApiClient;
+    //Map
+    private GoogleMap mMap;
 
+    private GoogleApiClient mGoogleApiClient;
+    private FusedLocationProviderClient mFusedLocationClient;
+
+    private final LatLng tsukuba = new LatLng(36.082736, 140.111592);
+    private LatLng mCurrentLocation;
+    private final LatLng mDefaultLocation = new LatLng(35.652832, 139.839478);
+
+    private LatLng mCameraLocation;
+    private float mCameraZoom;
+    private float mCameraDefaultZoom = 15;
+    private double earth_dis = 6378137;
 
     private Place selectedPlace;
     private boolean selected_place;
     private Marker selectedPlaceMarker;
+
+    //UI
+
+    //Preference
+    private SharedPreferences preferences;
+    private SharedPreferences sharedPreferences;
+    private SharedPreferences.OnSharedPreferenceChangeListener onSharedPreferenceChangeListener;
+    private Boolean serviceAvailable;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        //Preference
+        preferences = getSharedPreferences("DATA", Context.MODE_PRIVATE);
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        onSharedPreferenceChangeListener = new SharedPreferences.OnSharedPreferenceChangeListener() {
+            @Override
+            public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+                if (key.equals("location_service_switch")) {
+                    serviceAvailable = sharedPreferences.getBoolean(key, false);
+                    Log.i(TAG, "onSharedPreference(serviceAvailable) : " + String.valueOf(sharedPreferences.getBoolean(key, false)));
+                    if (serviceAvailable) {
+                        Log.i("onSharedPreference", "startService");
+                        startService(new Intent(getBaseContext(), CurrentLocationService.class));
+                    } else {
+                        Log.i("onSharedPreference", "stopService");
+                        stopService(new Intent(getBaseContext(), CurrentLocationService.class));
+                    }
+                    preferences.edit().putBoolean("SERVICE", serviceAvailable).apply();
+
+                } else {
+                    Log.i(TAG, "onSharedPreference");
+                }
+            }
+        };
+        sharedPreferences.registerOnSharedPreferenceChangeListener(onSharedPreferenceChangeListener);
+
+        //Client
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .enableAutoManage(this /* FragmentActivity */,
+                        this /* OnConnectionFailedListener */)
+                .addConnectionCallbacks(this)
+                .addApi(LocationServices.API)
+                .addApi(Places.GEO_DATA_API)
+                .addApi(Places.PLACE_DETECTION_API)
+                .build();
+        mGoogleApiClient.connect();
+
+        //UI
         ImageButton drawerButton = (ImageButton) findViewById(R.id.drawer_button);
         drawerButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -141,41 +190,7 @@ public class MainActivity extends AppCompatActivity
         NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
         navigationView.setNavigationItemSelectedListener(this);
 
-        preferences = getSharedPreferences("DATA", Context.MODE_PRIVATE);
-        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        onSharedPreferenceChangeListener = new SharedPreferences.OnSharedPreferenceChangeListener() {
-            @Override
-            public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-                if (key.equals("location_service_switch")) {
-                    serviceAvailble = sharedPreferences.getBoolean(key, false);
-                    Log.i("onSharedPreference", String.valueOf(sharedPreferences.getBoolean(key, false)));
-                    if (serviceAvailble) {
-                        startService(new Intent(getBaseContext(), CurrentLocationService.class));
-                    } else {
-                        stopService(new Intent(getBaseContext(), CurrentLocationService.class));
-                    }
-                    preferences.edit().putBoolean("SERVICE", serviceAvailble).apply();
-
-                } else {
-                    Log.i("onSharedPreference", "else");
-                }
-            }
-        };
-        sharedPreferences.registerOnSharedPreferenceChangeListener(onSharedPreferenceChangeListener);
-
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .enableAutoManage(this /* FragmentActivity */,
-                        this /* OnConnectionFailedListener */)
-                .addConnectionCallbacks(this)
-                .addApi(LocationServices.API)
-                .addApi(Places.GEO_DATA_API)
-                .addApi(Places.PLACE_DETECTION_API)
-                .build();
-
-        mGoogleApiClient.connect();
-
-        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-
+        //Fragment
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
@@ -184,17 +199,14 @@ public class MainActivity extends AppCompatActivity
                 getFragmentManager().findFragmentById(R.id.autocomplete_fragment);
         autocompleteFragment.setOnPlaceSelectedListener(this);
 
-
-        serviceAvailble = sharedPreferences.getBoolean("location_service_switch", false);
-
+        //情報&UI更新
         updateValuesFromSharedPreferences(preferences);
         updateValuesFromBundle(savedInstanceState);
+        selected_place = false;
 
-
+        //Firebase
         mDatabase = FirebaseDatabase.getInstance();
-        mDatabaseReference = mDatabase.getReference("Places");
-
-
+        mDatabaseReference = mDatabase.getReference(KEY_PLACE_FROM_DATABASE);
         mDatabaseReference.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
@@ -217,7 +229,31 @@ public class MainActivity extends AppCompatActivity
 
         intent = getIntent();
 
-        selected_place = false;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        Log.i(TAG, "onResume");
+        sharedPreferences.registerOnSharedPreferenceChangeListener(onSharedPreferenceChangeListener);
+        if (!checkPermissions()) {
+            requestPermissions();
+        }
+        updateUI();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Log.i(TAG, "onPause");
+        sharedPreferences.unregisterOnSharedPreferenceChangeListener(onSharedPreferenceChangeListener);
+        if (mMap != null) {
+            CameraPosition mCameraPosition = mMap.getCameraPosition();
+            mCameraLocation = mCameraPosition.target;
+            Log.i(TAG, mCameraLocation.latitude + ":" + mCameraLocation.longitude);
+            mCameraZoom = mCameraPosition.zoom;
+            Log.i(TAG, mCameraZoom + "");
+        }
     }
 
     @Override
@@ -230,14 +266,14 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    @SuppressWarnings("StatementWithEmptyBody")
+
     @Override
     public boolean onNavigationItemSelected(MenuItem item) {
         // Handle navigation view item clicks here.
         int id = item.getItemId();
-
         if (id == R.id.foglift_map) {
-            // Handle the camera action
+            DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
+            drawer.closeDrawer(GravityCompat.START);
         } else if (id == R.id.world_map) {
             startActivity(new Intent(getApplication(), WorldMapsActivity.class));
         } else if (id == R.id.nav_preference) {
@@ -256,44 +292,31 @@ public class MainActivity extends AppCompatActivity
     @SuppressLint("MissingPermission")
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        mMap = googleMap;
-
-        mMap.setPadding(0, 200, 0, 0);
         Log.i(TAG, "onMapReady");
         mMap = googleMap;
 
+        mMap.setPadding(0, 200, 0, 0);
         mMap.getUiSettings().setMyLocationButtonEnabled(true);
-        mMap.getUiSettings().setZoomControlsEnabled(true);
         mMap.getUiSettings().setCompassEnabled(true);
         mMap.getUiSettings().setIndoorLevelPickerEnabled(true);
-
         mMap.setOnPoiClickListener(this);
-
         mMap.setInfoWindowAdapter(new CustomWindowViewer(fragmentActivity));
         mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
                 Log.i(TAG, "onMarkerClick");
-                if(!marker.equals(selectedPlaceMarker)) {
+                if (!marker.equals(selectedPlaceMarker)) {
                     CameraPosition cameraPos = mMap.getCameraPosition();
-                    VisibleRegion screenRegion = mMap.getProjection().getVisibleRegion();
-                    LatLng topRight = screenRegion.latLngBounds.northeast;
-                    LatLng bottomLeft = screenRegion.latLngBounds.southwest;
-                    double screenDistance = SphericalUtil.computeDistanceBetween(topRight, bottomLeft) * sin(40) * 25;
-                    double theta = cameraPos.tilt;
-                    double distance = screenDistance / earth_dis;
-                    double moveLat = distance * cos(theta);
-                    double moveLng = distance * sin(theta);
+                    Point markerPoint = mMap.getProjection().toScreenLocation(marker.getPosition());
+                    markerPoint.y -= 675;
                     marker.showInfoWindow();
                     CameraPosition cameraPosition = new CameraPosition.Builder()
-                            .tilt(cameraPos.tilt)
+                            .bearing(cameraPos.bearing)
                             .zoom(cameraPos.zoom)
-                            .target(new LatLng(marker.getPosition().latitude + moveLat, marker.getPosition().longitude + moveLng))      // Sets the center of the map to Mountain View
-                            .build();                   // Creates a CameraPosition from the builder
+                            .target(mMap.getProjection().fromScreenLocation(markerPoint))
+                            .build();
 
                     mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-                    //mMap.moveCamera(CameraUpdateFactory.newLatLng(new LatLng(marker.getPosition().latitude + moveLat, marker.getPosition().longitude + moveLng)));
-
                 }
                 return true;
             }
@@ -320,26 +343,15 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onError(Status status) {
-
     }
 
     @Override
     public void onPoiClick(PointOfInterest pointOfInterest) {
-        if (selectedPlaceMarker != null) {
-            selectedPlaceMarker.remove();
-        }
-            CameraPosition cameraPosition = new CameraPosition.Builder()
-                    .target(selectedPlace.getLatLng())      // Sets the center of the map to Mountain View
-                    .zoom(17)                   // Sets the zoom
-                    .build();                   // Creates a CameraPosition from the builder
-            mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-            selectedPlaceMarker = mMap.addMarker(new MarkerOptions().position(selectedPlace.getLatLng())
-                    .icon(BitmapDescriptorFactory.defaultMarker()));
-        CameraPosition cameraPos = new CameraPosition.Builder()
-                .target(pointOfInterest.latLng)      // Sets the center of the map to Mountain View
-                .zoom(17)                   // Sets the zoom
-                .build();                   // Creates a CameraPosition from the builder
-        mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPos));
+        Log.i(TAG, "onPoiClick");
+
+        updateSelectedPlaceMarker(pointOfInterest.latLng);
+        moveCameraWithAnimation(pointOfInterest.latLng);
+
         Toast.makeText(getApplicationContext(), "Clicked: " +
                         pointOfInterest.name + "\nPlace ID:" + pointOfInterest.placeId +
                         "\nLatitude:" + pointOfInterest.latLng.latitude +
@@ -347,8 +359,27 @@ public class MainActivity extends AppCompatActivity
                 Toast.LENGTH_SHORT).show();
     }
 
+    private void moveCameraWithAnimation(LatLng latLng) {
+        CameraPosition cameraPos = mMap.getCameraPosition();
+        CameraPosition cameraPosition = new CameraPosition.Builder()
+                .target(latLng)
+                .bearing(cameraPos.bearing)
+                .zoom(17)
+                .build();
+        mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+    }
+
+    private void updateSelectedPlaceMarker(LatLng latLng) {
+        if (selectedPlaceMarker != null) {
+            selectedPlaceMarker.remove();
+        }
+        selectedPlaceMarker = mMap.addMarker(new MarkerOptions().position(latLng)
+                .icon(BitmapDescriptorFactory.defaultMarker()));
+    }
+
     @SuppressLint("MissingPermission")
     private void getDeviceLocation() {
+        Log.i(TAG, "getDeviceLocation");
         if (checkPermissions()) {
             mFusedLocationClient.getLastLocation().addOnSuccessListener(new OnSuccessListener<Location>() {
                 @Override
@@ -363,7 +394,7 @@ public class MainActivity extends AppCompatActivity
     public void addMakerAll() {
         Log.i(TAG, "addMarkerAll");
         for (DatabasePlace dbPlace : dbPlaceList) {
-            if (dbPlace.getKind().equals("狂犬病")) {
+            if (dbPlace.getKind().equals(KEY_RABIES)) {
                 Resources r = getResources();
                 Bitmap bmp = BitmapFactory.decodeResource(r, R.drawable.dogmarker);
                 markerHashArray.put(dbPlace.getId(), mMap.addMarker(new MarkerOptions().position(dbPlace.getLocation()).title(dbPlace.getName())
@@ -377,27 +408,33 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    /**
+     * データベースから場所情報を取得しdbPlaceListに追加
+     *
+     * @param dataSnapshot
+     * @param dbPlaceList
+     */
     private void putPlaceList(DataSnapshot dataSnapshot, List<DatabasePlace> dbPlaceList) {
         Log.i(TAG, "putPlaceList");
+
+        DatabasePlace dbPlace = getPlcaeFromDatabase(dataSnapshot);
+        dbPlaceList.add(dbPlace);
+    }
+
+    @SuppressWarnings("ConstantConditions")
+    private DatabasePlace getPlcaeFromDatabase(DataSnapshot dataSnapshot) {
         String key = dataSnapshot.getKey();
-        Object kind = dataSnapshot.child("Kind").getValue();
-        Object level = dataSnapshot.child("Level").getValue();
-        Object latitude = dataSnapshot.child("Location").child("Latitude").getValue();
-        Object longitude = dataSnapshot.child("Location").child("Longitude").getValue();
-        Object uri = dataSnapshot.child("ImageURI").getValue();
-        Object id = dataSnapshot.child("ID").getValue();
-        Object information = dataSnapshot.child("Information").getValue();
-        Log.i("putPlaceList", key + ":[" + kind + ":" + level + ":" + latitude + ":" + longitude + ":" + id + "]");
-        if (latitude != null && longitude != null) {
-            DatabasePlace dbPlace = new DatabasePlace(key, (String) kind, (long) level, (Double) latitude, (Double) longitude, (long) id, (String) uri, (String) information);
-            dbPlaceList.add(dbPlace);
-        }
+        Object kind = dataSnapshot.child(KEY_KIND_FROM_DATABASE).getValue();
+        Object level = dataSnapshot.child(KEY_LEVEL_FROM_DATABASE).getValue();
+        Object latitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_LATITUDE).getValue();
+        Object longitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_LONGITUDE).getValue();
+        Object uri = dataSnapshot.child(KEY_IMAGEURI_FROM_DATABASE).getValue();
+        Object id = dataSnapshot.child(KEY_ID_FROM_DATABASE).getValue();
+        Object information = dataSnapshot.child(KEY_INFORMATION_FROM_DATABASE).getValue();
+
+        Log.i("getPlaceFromDatabase", key + ":[" + kind + ":" + level + ":(" + latitude + "," + longitude + "):" + id + "]");
+        return new DatabasePlace(key, (String) kind, (long) level, (Double) latitude, (Double) longitude, (long) id, (String) uri, (String) information);
     }
-
-    private void putMarker(String name, Marker marker) {
-
-    }
-
 
     @Override
     public void onConnected(@Nullable Bundle bundle) {
@@ -416,7 +453,6 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onMarkerDragStart(Marker marker) {
-
     }
 
     @Override
@@ -448,9 +484,13 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    /**
+     * Preferenceから変数情報取得
+     *
+     * @param data
+     */
     private void updateValuesFromSharedPreferences(SharedPreferences data) {
-        serviceAvailble = data.getBoolean("SERVICE", false);
-
+        serviceAvailable = data.getBoolean("SERVICE", false);
     }
 
 
@@ -487,16 +527,10 @@ public class MainActivity extends AppCompatActivity
                 }
             } else if (selected_place) {
                 Log.i("updateUI", "selected_place");
-                if (selectedPlaceMarker != null) {
-                    selectedPlaceMarker.remove();
-                }
-                CameraPosition cameraPosition = new CameraPosition.Builder()
-                        .target(selectedPlace.getLatLng())      // Sets the center of the map to Mountain View
-                        .zoom(17)                   // Sets the zoom
-                        .build();                   // Creates a CameraPosition from the builder
-                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-                selectedPlaceMarker = mMap.addMarker(new MarkerOptions().position(selectedPlace.getLatLng())
-                        .icon(BitmapDescriptorFactory.defaultMarker()));
+
+                updateSelectedPlaceMarker(selectedPlace.getLatLng());
+                moveCameraWithAnimation(selectedPlace.getLatLng());
+
                 selected_place = false;
             } else {
                 if (mCameraLocation != null) {
@@ -514,30 +548,6 @@ public class MainActivity extends AppCompatActivity
 
         }
 
-    }
-
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        Log.i(TAG, "onResume");
-        if (!checkPermissions()) {
-            requestPermissions();
-        }
-        updateUI();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        Log.i(TAG, "onPause");
-        if (mMap != null) {
-            CameraPosition mCameraPosition = mMap.getCameraPosition();
-            mCameraLocation = mCameraPosition.target;
-            Log.i(TAG, mCameraLocation.latitude + ":" + mCameraLocation.longitude);
-            mCameraZoom = mCameraPosition.zoom;
-            Log.i(TAG, mCameraZoom + "");
-        }
     }
 
 
@@ -563,6 +573,7 @@ public class MainActivity extends AppCompatActivity
      * @return
      */
     private boolean checkPermissions() {
+        Log.i(TAG, "checkPermissions");
         int permissionState = ActivityCompat.checkSelfPermission(this,
                 android.Manifest.permission.ACCESS_FINE_LOCATION);
         return permissionState == PackageManager.PERMISSION_GRANTED;
@@ -572,12 +583,13 @@ public class MainActivity extends AppCompatActivity
      * 権限リクエスト
      */
     private void requestPermissions() {
+        Log.i(TAG, "requestPermissions");
         boolean shouldProvideRationale =
                 ActivityCompat.shouldShowRequestPermissionRationale(this,
                         android.Manifest.permission.ACCESS_FINE_LOCATION);
 
         if (shouldProvideRationale) {
-            Log.i(TAG, "Displaying permission rationale to provide additional context.");
+            Log.i("requestPermissions", "Displaying permission rationale to provide additional context.");
             showSnackbar(R.string.permission_rationale,
                     android.R.string.ok, new View.OnClickListener() {
                         @Override
@@ -588,7 +600,7 @@ public class MainActivity extends AppCompatActivity
                         }
                     });
         } else {
-            Log.i(TAG, "Requesting permission");
+            Log.i("requestPermissions", "Requesting permission");
             ActivityCompat.requestPermissions(MainActivity.this,
                     new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
                     REQUEST_PERMISSIONS_REQUEST_CODE);
@@ -611,7 +623,6 @@ public class MainActivity extends AppCompatActivity
             if (grantResults.length <= 0) {
                 Log.i(TAG, "User interaction was cancelled.");
             } else if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
                 Log.i(TAG, "Permission granted, updates requested, starting location updates");
                 if (checkPermissions()) {
                     mMap.setMyLocationEnabled(true);

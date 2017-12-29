@@ -22,12 +22,22 @@
         android:title="@string/pref_title_notifcaiton_kind" />
 
     <ListPreference
-        android:defaultValue="3"
+        android:defaultValue="@string/notify_default_level_value"
         android:entries="@array/list_pref_notify_level"
         android:entryValues="@array/list_pref_notify_level_value"
         android:key="notification_level"
         android:negativeButtonText="@null"
         android:positiveButtonText="@null"
+        android:summary="Level 3"
         android:title="@string/pref_title_notifcaiton_level" />
+    <ListPreference
+        android:defaultValue="@string/notify_default_distance_value"
+        android:entries="@array/list_pref_notify_distance"
+        android:entryValues="@array/list_pref_notify_distance_value"
+        android:key="notification_distance"
+        android:negativeButtonText="@null"
+        android:positiveButtonText="@null"
+        android:summary="@string/notify_default_distance"
+        android:title="@string/pref_title_notifcaiton_distance" />
 
 </PreferenceScreen>
