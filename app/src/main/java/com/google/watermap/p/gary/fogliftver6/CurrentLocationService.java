@@ -46,7 +46,29 @@ import java.util.List;
 
 public class CurrentLocationService extends Service {
 
+    //KEY
+    private final static String KEY_CAMERA_LOCATION = "camera_location";
+    private final static String KEY_CAMERA_ZOOM = "camera_zoom";
+    private final static String KEY_LOCATION = "location";
 
+    private final static String KEY_LATITUDE = "Latitude";
+    private final static String KEY_LONGITUDE = "Longitude";
+
+    private static final String KEY_GENERAL = "一般";
+    private static final String KEY_DIARRHEA = "下痢";
+    private static final String KEY_RABIES = "狂犬病";
+
+    private static final String KEY_PLACE_FROM_DATABASE = "Places";
+    private static final String KEY_ROAD_FROM_DATABASE = "Roads";
+    private static final String KEY_KIND_FROM_DATABASE = "Kind";
+    private static final String KEY_LEVEL_FROM_DATABASE = "Level";
+    private static final String KEY_LOCATION_FROM_DATABASE = "Location";
+    private static final String KEY_IMAGEURI_FROM_DATABASE = "ImageURI";
+    private static final String KEY_ID_FROM_DATABASE = "ID";
+    private static final String KEY_INFORMATION_FROM_DATABASE = "Information";
+
+    private static final String KEY_DANGER_PLACE_ID = "danger_place_id";
+    private static final String KEY_FROM_NOTIFICATION = "from_notification";
     //Share
     private static final String TAG = CurrentLocationService.class.getSimpleName();
     private FusedLocationProviderClient mFusedLocationClient;
@@ -309,7 +331,9 @@ public class CurrentLocationService extends Service {
     }
 
 
-
+    /**
+     * サービス実行通知
+     */
     private void keepNotification() {
         NotificationCompat.Builder mBuilder =
                 new NotificationCompat.Builder(this)
@@ -337,6 +361,10 @@ public class CurrentLocationService extends Service {
         mNotificationManager.notify(nID, mBuilder.build());
     }
 
+    /**
+     * 危険区域侵入通知
+     * @param place
+     */
     private void dangerNotification(DatabasePlace place) {
         NotificationCompat.Builder mBuilder =
                 new NotificationCompat.Builder(this)
@@ -350,8 +378,8 @@ public class CurrentLocationService extends Service {
 
         //Intent作成
         Intent resultIntent = new Intent(getApplicationContext(), MainActivity.class);
-        resultIntent.putExtra("DANGER_MARKER_ID", place.getId());
-        resultIntent.putExtra("FROM_NOTIFICATION", true);
+        resultIntent.putExtra(KEY_DANGER_PLACE_ID, place.getId());
+        resultIntent.putExtra(KEY_FROM_NOTIFICATION, true);
         TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
         stackBuilder.addParentStack(MainActivity.class);
 
@@ -373,24 +401,40 @@ public class CurrentLocationService extends Service {
 
     }
 
+    /**
+     * データベースから場所情報を取得しdbPlaceListに追加
+     *
+     * @param dataSnapshot
+     */
     private void putPlaceList(DataSnapshot dataSnapshot) {
-        String key = dataSnapshot.getKey();
-        Log.i("onDataChange", key);
-        Object kind = dataSnapshot.child("Kind").getValue();
-        Object level = dataSnapshot.child("Level").getValue();
-        Object latitude = dataSnapshot.child("Location").child("Latitude").getValue();
-        Object longitude = dataSnapshot.child("Location").child("Longitude").getValue();
-        Object uri = dataSnapshot.child("ImageURI").getValue();
-        Object id = dataSnapshot.child("ID").getValue();
-        Object information = dataSnapshot.child("Information").getValue();
-        Log.i("Value", kind + ":" + level + ":" + latitude + ":" + longitude + ":" + id);
-        if (latitude != null && longitude != null) {
-            DatabasePlace dbPlace = new DatabasePlace(key, (String) kind, (long) level, (Double) latitude, (Double) longitude, (long) id, (String) uri, (String) information);
-            dbPlaceList.add(dbPlace);
-            dbPlaceNotificationCheckArray.put(dbPlace.getId(), false);
-        }
+        Log.i(TAG, "putPlaceList");
+        DatabasePlace dbPlace = getPlcaeFromDatabase(dataSnapshot);
+        dbPlaceList.add(dbPlace);
     }
 
+    /**
+     * データベースから場所情報を取得
+     * @param dataSnapshot
+     * @return
+     */
+    @SuppressWarnings("ConstantConditions")
+    private DatabasePlace getPlcaeFromDatabase(DataSnapshot dataSnapshot) {
+        String key = dataSnapshot.getKey();
+        Object kind = dataSnapshot.child(KEY_KIND_FROM_DATABASE).getValue();
+        Object level = dataSnapshot.child(KEY_LEVEL_FROM_DATABASE).getValue();
+        Object latitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_LATITUDE).getValue();
+        Object longitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_LONGITUDE).getValue();
+        Object uri = dataSnapshot.child(KEY_IMAGEURI_FROM_DATABASE).getValue();
+        Object id = dataSnapshot.child(KEY_ID_FROM_DATABASE).getValue();
+        Object information = dataSnapshot.child(KEY_INFORMATION_FROM_DATABASE).getValue();
+
+        Log.i("getPlaceFromDatabase", key + ":[" + kind + ":" + level + ":(" + latitude + "," + longitude + "):" + id + "]");
+        return new DatabasePlace(key, (String) kind, (long) level, (Double) latitude, (Double) longitude, (long) id, (String) uri, (String) information);
+    }
+
+    /**
+     * Databaseのリストから至近距離の場所があれば通知
+     */
     public void checkPlaceAll() {
         Log.i("Check", "checkPlaceAll");
         for (DatabasePlace dbPlace : dbPlaceList) {

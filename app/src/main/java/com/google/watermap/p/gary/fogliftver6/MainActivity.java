@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.location.Location;
 import android.net.Uri;
@@ -49,20 +50,17 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PointOfInterest;
-import com.google.android.gms.maps.model.VisibleRegion;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
-import com.google.maps.android.SphericalUtil;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static java.lang.Math.cos;
-import static java.lang.Math.sin;
 
 public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback, GoogleMap.OnMarkerDragListener, GoogleApiClient.ConnectionCallbacks,
@@ -94,14 +92,22 @@ public class MainActivity extends AppCompatActivity
     private static final String KEY_IMAGEURI_FROM_DATABASE = "ImageURI";
     private static final String KEY_ID_FROM_DATABASE = "ID";
     private static final String KEY_INFORMATION_FROM_DATABASE = "Information";
+    private static final String KEY_START_LOCATION_FROM_DATABASE = "Start";
+    private static final String KEY_END_LOCATION_FROM_DATABASE = "End";
+
+    private static final String KEY_DANGER_PLACE_ID = "danger_place_id";
+    private static final String KEY_FROM_NOTIFICATION = "from_notification";
 
     //Firebase
     private FragmentActivity fragmentActivity = this;
     private FirebaseDatabase mDatabase;
-    private DatabaseReference mDatabaseReference;
+    private DatabaseReference mDatabasePlacesReference;
+    private DatabaseReference mDatabaseRoadsReference;
     private List<DatabasePlace> dbPlaceList = new ArrayList<>();
+    private List<DatabaseRoad> dbRoadList = new ArrayList<>();
     private boolean onDataChange = false;
     private LongSparseArray<Marker> markerHashArray = new LongSparseArray<>();
+    private LongSparseArray<Polyline> polylineHashArray = new LongSparseArray<>();
 
     //Map
     private GoogleMap mMap;
@@ -206,14 +212,14 @@ public class MainActivity extends AppCompatActivity
 
         //Firebase
         mDatabase = FirebaseDatabase.getInstance();
-        mDatabaseReference = mDatabase.getReference(KEY_PLACE_FROM_DATABASE);
-        mDatabaseReference.addListenerForSingleValueEvent(new ValueEventListener() {
+        mDatabasePlacesReference = mDatabase.getReference(KEY_PLACE_FROM_DATABASE);
+        mDatabasePlacesReference.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
                 Log.i(TAG, "onDataChange");
                 onDataChange = true;
                 for (DataSnapshot data : dataSnapshot.getChildren()) {
-                    putPlaceList(data, dbPlaceList);
+                    putPlaceList(data);
                 }
                 if (mMap != null) {
                     addMakerAll();
@@ -227,6 +233,26 @@ public class MainActivity extends AppCompatActivity
             }
         });
 
+        mDatabaseRoadsReference = mDatabase.getReference(KEY_ROAD_FROM_DATABASE);
+        mDatabaseRoadsReference.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                Log.i(TAG, "onDataChange");
+                onDataChange = true;
+                for (DataSnapshot data : dataSnapshot.getChildren()) {
+                    putRoadList(data);
+                }
+                if (mMap != null) {
+                    addPolylineAll();
+                    updateUI();
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                Log.i(TAG, "Database Error");
+            }
+        });
         intent = getIntent();
 
     }
@@ -257,6 +283,16 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+    }
+
+
+    /**
+     * NavigationDrawer系
+     */
+    @Override
     public void onBackPressed() {
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         if (drawer.isDrawerOpen(GravityCompat.START)) {
@@ -265,7 +301,6 @@ public class MainActivity extends AppCompatActivity
             super.onBackPressed();
         }
     }
-
 
     @Override
     public boolean onNavigationItemSelected(MenuItem item) {
@@ -289,6 +324,11 @@ public class MainActivity extends AppCompatActivity
         return true;
     }
 
+    /**
+     * マップ描写開始コールバック
+     *
+     * @param googleMap
+     */
     @SuppressLint("MissingPermission")
     @Override
     public void onMapReady(GoogleMap googleMap) {
@@ -329,6 +369,11 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    /**
+     * 検索地点コールバック
+     *
+     * @param place
+     */
     @Override
     public void onPlaceSelected(Place place) {
         Log.i(TAG, "onPlaceSelected");
@@ -345,6 +390,11 @@ public class MainActivity extends AppCompatActivity
     public void onError(Status status) {
     }
 
+    /**
+     * 選択地点コールバック
+     *
+     * @param pointOfInterest
+     */
     @Override
     public void onPoiClick(PointOfInterest pointOfInterest) {
         Log.i(TAG, "onPoiClick");
@@ -359,6 +409,49 @@ public class MainActivity extends AppCompatActivity
                 Toast.LENGTH_SHORT).show();
     }
 
+    /**
+     * GoogleMapAPIClientコールバック
+     *
+     * @param bundle
+     */
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+        Log.i(TAG, "onConnected");
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        Log.i(TAG, "onConnectionSuspended");
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+        Log.i(TAG, "onConnectionFailed");
+    }
+
+    /**
+     * マーカー移動コールバック
+     *
+     * @param marker
+     */
+    @Override
+    public void onMarkerDragStart(Marker marker) {
+    }
+
+    @Override
+    public void onMarkerDrag(Marker marker) {
+    }
+
+    @Override
+    public void onMarkerDragEnd(Marker marker) {
+    }
+
+
+    /**
+     * LatKngへアニメーション付きで移動
+     *
+     * @param latLng
+     */
     private void moveCameraWithAnimation(LatLng latLng) {
         CameraPosition cameraPos = mMap.getCameraPosition();
         CameraPosition cameraPosition = new CameraPosition.Builder()
@@ -369,6 +462,11 @@ public class MainActivity extends AppCompatActivity
         mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
     }
 
+    /**
+     * 選択された地点へマーカーを更新
+     *
+     * @param latLng
+     */
     private void updateSelectedPlaceMarker(LatLng latLng) {
         if (selectedPlaceMarker != null) {
             selectedPlaceMarker.remove();
@@ -377,6 +475,9 @@ public class MainActivity extends AppCompatActivity
                 .icon(BitmapDescriptorFactory.defaultMarker()));
     }
 
+    /**
+     * 現在地取得（UI起動時専用）
+     */
     @SuppressLint("MissingPermission")
     private void getDeviceLocation() {
         Log.i(TAG, "getDeviceLocation");
@@ -391,6 +492,9 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    /**
+     * DBPlaceリストからマーカーを追加
+     */
     public void addMakerAll() {
         Log.i(TAG, "addMarkerAll");
         for (DatabasePlace dbPlace : dbPlaceList) {
@@ -409,18 +513,51 @@ public class MainActivity extends AppCompatActivity
     }
 
     /**
+     * DBRoadリストからポリラインを追加
+     */
+    public void addPolylineAll() {
+        Log.i(TAG, "addPolylineAll");
+        for (DatabaseRoad dbRoad : dbRoadList) {
+            PolylineOptions polylineOptions = new PolylineOptions()
+                    .add(dbRoad.getStart())
+                    .add(dbRoad.getEnd());
+
+            polylineHashArray.put(dbRoad.getId(), mMap.addPolyline(polylineOptions.color(dbRoad.getLevelColor()).width(20)));
+            polylineHashArray.get(dbRoad.getId()).setTag(dbRoad);
+
+        }
+    }
+
+    /**
      * データベースから場所情報を取得しdbPlaceListに追加
      *
      * @param dataSnapshot
-     * @param dbPlaceList
      */
-    private void putPlaceList(DataSnapshot dataSnapshot, List<DatabasePlace> dbPlaceList) {
+    private void putPlaceList(DataSnapshot dataSnapshot) {
         Log.i(TAG, "putPlaceList");
 
         DatabasePlace dbPlace = getPlcaeFromDatabase(dataSnapshot);
         dbPlaceList.add(dbPlace);
     }
 
+    /**
+     * データベースから場所情報を取得しdbPlaceListに追加
+     *
+     * @param dataSnapshot
+     */
+    private void putRoadList(DataSnapshot dataSnapshot) {
+        Log.i(TAG, "putRoadList");
+
+        DatabaseRoad dbRoad = getRoadFromDatabase(dataSnapshot);
+        dbRoadList.add(dbRoad);
+    }
+
+    /**
+     * データベースから場所情報を取得
+     *
+     * @param dataSnapshot
+     * @return
+     */
     @SuppressWarnings("ConstantConditions")
     private DatabasePlace getPlcaeFromDatabase(DataSnapshot dataSnapshot) {
         String key = dataSnapshot.getKey();
@@ -436,32 +573,23 @@ public class MainActivity extends AppCompatActivity
         return new DatabasePlace(key, (String) kind, (long) level, (Double) latitude, (Double) longitude, (long) id, (String) uri, (String) information);
     }
 
-    @Override
-    public void onConnected(@Nullable Bundle bundle) {
-        Log.i(TAG, "onConnected");
+    @SuppressWarnings("ConstantConditions")
+    private DatabaseRoad getRoadFromDatabase(DataSnapshot dataSnapshot) {
+        String key = dataSnapshot.getKey();
+        Object kind = dataSnapshot.child(KEY_KIND_FROM_DATABASE).getValue();
+        Object level = dataSnapshot.child(KEY_LEVEL_FROM_DATABASE).getValue();
+        Object startLatitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_START_LOCATION_FROM_DATABASE).child(KEY_LATITUDE).getValue();
+        Object startLongitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_START_LOCATION_FROM_DATABASE).child(KEY_LONGITUDE).getValue();
+        Object endLatitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_END_LOCATION_FROM_DATABASE).child(KEY_LATITUDE).getValue();
+        Object endLongitude = dataSnapshot.child(KEY_LOCATION_FROM_DATABASE).child(KEY_END_LOCATION_FROM_DATABASE).child(KEY_LONGITUDE).getValue();
+        Object uri = dataSnapshot.child(KEY_IMAGEURI_FROM_DATABASE).getValue();
+        Object id = dataSnapshot.child(KEY_ID_FROM_DATABASE).getValue();
+        Object information = dataSnapshot.child(KEY_INFORMATION_FROM_DATABASE).getValue();
+
+        Log.i("getRoadFromDatabase", key + ":[" + kind + ":" + level + ":(" + startLatitude + "," + startLongitude + "):(" + endLatitude + "," + endLongitude + "):" + id + "]");
+        return new DatabaseRoad(key, (String) kind, (long) level, (Double) startLatitude, (Double) startLongitude, (Double) endLatitude, (Double) endLongitude, (long) id, (String) uri, (String) information);
     }
 
-    @Override
-    public void onConnectionSuspended(int i) {
-        Log.i(TAG, "onConnectionSuspended");
-    }
-
-    @Override
-    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
-        Log.i(TAG, "onConnectionFailed");
-    }
-
-    @Override
-    public void onMarkerDragStart(Marker marker) {
-    }
-
-    @Override
-    public void onMarkerDrag(Marker marker) {
-    }
-
-    @Override
-    public void onMarkerDragEnd(Marker marker) {
-    }
 
     /**
      * 以前の情報の復元
@@ -513,8 +641,8 @@ public class MainActivity extends AppCompatActivity
     private void updateUI() {
         intent = getIntent();
         Log.i(TAG, "updateUI");
-        long dangerPlaceId = intent.getLongExtra("DANGER_MARKER_ID", 0);
-        boolean fromNotificationCheck = intent.getBooleanExtra("FROM_NOTIFICATION", false);
+        long dangerPlaceId = intent.getLongExtra(KEY_DANGER_PLACE_ID, 0);
+        boolean fromNotificationCheck = intent.getBooleanExtra(KEY_FROM_NOTIFICATION, false);
         if (mMap != null) {
             if (fromNotificationCheck) {
                 Log.i("updateUI", "fromNotification");
@@ -608,7 +736,7 @@ public class MainActivity extends AppCompatActivity
     }
 
     /**
-     * 権限リクエスト後のコールバック
+     * 権限リクエストコールバック
      *
      * @param requestCode
      * @param permissions
